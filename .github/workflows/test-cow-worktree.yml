@@ -1,0 +1,73 @@
+name: CoW worktree skill
+
+on:
+  push:
+    paths:
+      - skills/create-cow-worktree/**
+      - .github/workflows/test-cow-worktree.yml
+  pull_request:
+    paths:
+      - skills/create-cow-worktree/**
+      - .github/workflows/test-cow-worktree.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  portable:
+    strategy:
+      fail-fast: false
+      matrix:
+        # Python 3.9 builds are available for Ubuntu 24.04, not Ubuntu 26.04.
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+        python: ['3.9', '3.12']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Run portable tests and real APFS checks on macOS
+        shell: bash
+        env:
+          COW_REQUIRE_REAL: ${{ runner.os == 'macOS' && '1' || '0' }}
+        run: python -m unittest discover -s skills/create-cow-worktree/scripts -p 'test_*.py' -v
+
+  linux-reflink:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.9', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Create a disposable Btrfs filesystem for actual reflink checks
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y btrfs-progs
+          truncate -s 1G "$RUNNER_TEMP/cow-tests.img"
+          mkfs.btrfs -q "$RUNNER_TEMP/cow-tests.img"
+          mkdir "$RUNNER_TEMP/cow-tests-mount"
+          sudo mount -o loop "$RUNNER_TEMP/cow-tests.img" "$RUNNER_TEMP/cow-tests-mount"
+          sudo chown "$(id -u):$(id -g)" "$RUNNER_TEMP/cow-tests-mount"
+      - name: Require successful CoW on Btrfs
+        shell: bash
+        env:
+          COW_REQUIRE_REAL: '1'
+        run: |
+          export TMPDIR="$RUNNER_TEMP/cow-tests-mount"
+          python -m unittest discover -s skills/create-cow-worktree/scripts -p 'test_*.py' -v
+      - name: Release disposable filesystem
+        if: always()
+        shell: bash
+        run: |
+          if mountpoint -q "$RUNNER_TEMP/cow-tests-mount"; then
+            sudo umount "$RUNNER_TEMP/cow-tests-mount"
+          fi

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Create CoW Worktree"
+  short_description: "Create Git worktrees with copy-on-write when available"
+  default_prompt: "Use $create-cow-worktree to create an isolated Git worktree with copy-on-write when supported."
