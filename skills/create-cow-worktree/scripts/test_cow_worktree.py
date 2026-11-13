@@ -570,12 +570,16 @@ class WorktreeIntegrationTests(RepositoryFixture):
         self.assertEqual(target.read_bytes(), b"DEST")
 
 
+@unittest.skipIf(os.name == "nt", "CoW orchestration is supported on macOS/Linux; Windows uses ordinary Git")
 class MockedCloneOrchestrationTests(RepositoryFixture):
     """Exercise Git transactions with independent copies, not physical CoW.
 
     Only the clone primitive and backend availability are mocked. Assertions
     inspect real Git repositories and real files. No test here is evidence of
     filesystem block sharing; the real backend tests establish that separately.
+    Windows deliberately has no CoW backend, so forcing these POSIX setup paths
+    there would test unsupported behavior. The ordinary Windows CLI remains
+    covered by WorktreeIntegrationTests.
     """
 
     @classmethod
